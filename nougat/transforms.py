@@ -14,8 +14,11 @@ from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
 
 def alb_wrapper(transform):
-    def f(im):
-        return transform(image=np.asarray(im))["image"]
+    def f(im, target=None):
+        if target:
+            return transform(image=np.asarray(im), bboxes=target["boxes"], class_labels=target["labels"])
+        else:
+            return transform(image=np.asarray(im))["image"]
 
     return f
 
@@ -118,6 +121,8 @@ class Bitmap(alb.ImageOnlyTransform):
 train_transform = alb_wrapper(
     alb.Compose(
         [
+            alb.SmallestMaxSize(max_size=896),
+            alb.CenterCrop(896, 672),
             Bitmap(p=0.05),
             alb.OneOf([Erosion((2, 3)), Dilation((2, 3))], p=0.02),
             alb.Affine(shear={"x": (0, 3), "y": (-3, 0)}, cval=(255, 255, 255), p=0.03),
@@ -161,11 +166,13 @@ train_transform = alb_wrapper(
             alb.Normalize(IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD),
             ToTensorV2(),
         ]
-    )
+    , bbox_params=alb.BboxParams(format='pascal_voc', label_fields=['class_labels']))
 )
 test_transform = alb_wrapper(
     alb.Compose(
         [
+            alb.SmallestMaxSize(max_size=896),
+            alb.CenterCrop(896, 672),
             alb.Normalize(IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD),
             ToTensorV2(),
         ]

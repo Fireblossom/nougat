@@ -143,3 +143,6 @@ ckpt*/
 
 # Misc
 pdfs
+vision_misc
+detectron2_timm
+PennFudanPed

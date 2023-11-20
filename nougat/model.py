@@ -32,6 +32,7 @@ from transformers.file_utils import ModelOutput
 from transformers.modeling_utils import PretrainedConfig, PreTrainedModel
 from nougat.postprocessing import postprocess
 from nougat.transforms import train_transform, test_transform
+from collections import OrderedDict
 
 
 class SwinEncoder(nn.Module):
@@ -112,6 +113,7 @@ class SwinEncoder(nn.Module):
                 else:
                     new_swin_state_dict[x] = swin_state_dict[x]
             self.model.load_state_dict(new_swin_state_dict)
+        self.reshape = False
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -120,6 +122,17 @@ class SwinEncoder(nn.Module):
         """
         x = self.model.patch_embed(x)
         x = self.model.pos_drop(x)
+        if self.reshape:
+            reshaped_outputs = OrderedDict()
+            for i, layer in enumerate(self.model.layers):
+                x = layer(x)
+                batch_size, _, hidden_size = x.shape
+                l = i if i+1<len(self.model.layers) else i-1
+                resolution = self.model.layers[l+1].input_resolution
+                reshaped_x = x.view(batch_size, *resolution, hidden_size)
+                reshaped_x = reshaped_x.permute(0, 3, 1, 2)
+                reshaped_outputs[str(i)] = reshaped_x
+            return reshaped_outputs
         x = self.model.layers(x)
         return x
 
@@ -218,9 +231,14 @@ class BARTDecoder(nn.Module):
             tokenizer_file = Path(__file__).parent / "dataset" / "tokenizer.json"
         else:
             tokenizer_file = Path(name_or_path) / "tokenizer.json"
+        
         if not tokenizer_file.exists():
-            raise ValueError("Could not find tokenizer file")
-        self.tokenizer = PreTrainedTokenizerFast(tokenizer_file=str(tokenizer_file))
+            try:
+                self.tokenizer = PreTrainedTokenizerFast.from_pretrained(name_or_path)
+            except:
+                raise ValueError("Could not find tokenizer file")
+        else:
+            self.tokenizer = PreTrainedTokenizerFast(tokenizer_file=str(tokenizer_file))
         self.tokenizer.pad_token = "<pad>"
         self.tokenizer.bos_token = "<s>"
         self.tokenizer.eos_token = "</s>"
